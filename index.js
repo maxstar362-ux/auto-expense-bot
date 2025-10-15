@@ -24,8 +24,12 @@ function getCarsList() {
   return keys.map((car, i) => `${i + 1}. ${car}`).join('\n');
 }
 
+// Хранение состояния пользователя
+const userState = {};
+
 // Начало
 bot.start((ctx) => {
+  userState[ctx.chat.id] = {};
   ctx.reply(
     'Привет! Я бот для учёта расходов по автомобилям. Что делаем?',
     Markup.keyboard([
@@ -37,25 +41,10 @@ bot.start((ctx) => {
 
 // Добавление автомобиля
 bot.hears('➕ Добавить автомобиль', (ctx) => {
-  ctx.reply('Введи название автомобиля и последние 6 символов VIN, например: Tiguan • 123456');
-
-  const handler = (ctx2) => {
-    const carName = ctx2.message.text.trim();
-    if (!data[carName]) {
-      data[carName] = {
-        buy: { Максим: 0, Андрей: 0 },
-        expenses: [],
-        salePrice: 0
-      };
-      saveData();
-      ctx2.reply(Автомобиль "${carName}" добавлен!);
-    } else {
-      ctx2.reply('Такой автомобиль уже есть.');
-    }
-    bot.off('text', handler); // убираем обработчик, чтобы не дублировался
-  };
-
-  bot.on('text', handler);
+  userState[ctx.chat.id] = { step: 'add_car' };
+  ctx.reply('Введи название автомобиля и последние 6 символов VIN, например: Tiguan • 123456', 
+    Markup.keyboard([['⬅️ Назад']]).resize()
+  );
 });
 
 // Добавление расхода
@@ -64,56 +53,103 @@ bot.hears('💰 Добавить расход', (ctx) => {
     ctx.reply('Сначала добавь автомобиль.');
     return;
   }
-
+  userState[ctx.chat.id] = { step: 'choose_car_for_expense' };
   ctx.reply('Выбери автомобиль:', Markup.keyboard([...Object.keys(data), '⬅️ Назад']).resize());
+});
 
-  const carHandler = (ctx2) => {
-    const car = ctx2.message.text.trim();
-    if (!data[car]) return;
+// Слушаем все текстовые сообщения
+bot.on('text', (ctx) => {
+  const state = userState[ctx.chat.id] || {};
+  const text = ctx.message.text.trim();
 
-    ctx2.reply('Кто вносит расход?', Markup.keyboard([['Максим'], ['Андрей'], ['⬅️ Отмена']]).resize());
+  // Обработка кнопки "назад" или "отмена"
+  if (text === '⬅️ Назад' || text === '⬅️ Отмена') {
+    switch (state.step) {
+      case 'add_car':
+      case 'choose_car_for_expense':
+      case 'choose_person':
+      case 'expense_name':
+      case 'expense_cost':
+        userState[ctx.chat.id] = {};
+        ctx.reply('Действие отменено. Выберите опцию на клавиатуре.', 
+          Markup.keyboard([
+            ['➕ Добавить автомобиль', '💰 Добавить расход'],
+            ['📄 Отчёт', '🚗 Список автомобилей']
+          ]).resize()
+        );
+        return;
+      default:
+        userState[ctx.chat.id] = {};
+        return;
+    }
+  }
 
-    const personHandler = (ctx3) => {
-      const person = ctx3.message.text.trim();
-      if (person !== 'Максим' && person !== 'Андрей') return;
-
-      ctx3.reply('Введи название статьи расхода (например: ремонт, мойка и т.д.)');
-
-      const expenseNameHandler = (ctx4) => {
-        const expenseName = ctx4.message.text.trim();
-        ctx4.reply(Теперь введи сумму для "${expenseName}");
-
-        const costHandler = (ctx5) => {
-          const cost = parseFloat(ctx5.message.text);
-          if (isNaN(cost)) {
-            ctx5.reply('Нужно ввести число!');
-            return;
-          }
-
-          data[car].expenses.push({
-            person,
-            expenseName,
-            cost
-          });
-          saveData();
-          ctx5.reply(Расход "${expenseName}" на сумму ${cost}₽ добавлен от ${person}.);
-
-          bot.off('text', costHandler);
+  switch (state.step) {
+    // Добавление автомобиля
+    case 'add_car':
+      if (!data[text]) {
+        data[text] = {
+          buy: { Максим: 0, Андрей: 0 },
+          expenses: [],
+          salePrice: 0
         };
+        saveData();
+        ctx.reply(`Автомобиль "${text}" добавлен!`);
+      } else {
+        ctx.reply('Такой автомобиль уже есть.');
+      }
+      userState[ctx.chat.id] = {};
+      break;
 
-        bot.on('text', costHandler);
-        bot.off('text', expenseNameHandler);
-      };
+    // Выбор автомобиля для расхода
+    case 'choose_car_for_expense':
+      if (!data[text]) {
+        ctx.reply('Такого автомобиля нет. Выбери из списка.');
+        return;
+      }
+      state.step = 'choose_person';
+      state.car = text;
+      ctx.reply('Кто вносит расход?', Markup.keyboard([['Максим'], ['Андрей'], ['⬅️ Отмена']]).resize());
+      break;
 
-      bot.on('text', expenseNameHandler);
-      bot.off('text', personHandler);
-    };
+    // Выбор человека
+    case 'choose_person':
+      if (text !== 'Максим' && text !== 'Андрей') return;
+      state.step = 'expense_name';
+      state.person = text;
+      ctx.reply('Введи название статьи расхода (например: ремонт, мойка и т.д.)', 
+        Markup.keyboard([['⬅️ Назад']]).resize()
+      );
+      break;
 
-    bot.on('text', personHandler);
-    bot.off('text', carHandler);
-  };
+    // Название статьи расхода
+    case 'expense_name':
+      state.step = 'expense_cost';
+      state.expenseName = text;
+      ctx.reply(`Теперь введи сумму для "${text}"`, Markup.keyboard([['⬅️ Назад']]).resize());
+      break;
 
-  bot.on('text', carHandler);
+    // Сумма расхода
+    case 'expense_cost':
+      const cost = parseFloat(text);
+      if (isNaN(cost)) {
+        ctx.reply('Нужно ввести число!');
+        return;
+      }
+      data[state.car].expenses.push({
+        person: state.person,
+        expenseName: state.expenseName,
+        cost
+      });
+      saveData();
+      ctx.reply(`Расход "${state.expenseName}" на сумму ${cost}₽ добавлен от ${state.person}.`);
+      userState[ctx.chat.id] = {};
+      break;
+
+    default:
+      ctx.reply('Выберите действие через клавиатуру.');
+      break;
+  }
 });
 
 // Отчёт
@@ -133,13 +169,14 @@ bot.hears('📄 Отчёт', (ctx) => {
       .reduce((sum, e) => sum + e.cost, 0);
     const total = totalByMax + totalByAnd;
 
-    text += 🚗 ${car}\n;
-    text += Максим: ${totalByMax}₽\nАндрей: ${totalByAnd}₽\nВсего: ${total}₽\n\n;
+    text += `🚗 ${car}\n`;
+    text += `Максим: ${totalByMax}₽\nАндрей: ${totalByAnd}₽\nВсего: ${total}₽\n\n`;
   }
 
   ctx.reply(text);
 });
 
+// Список автомобилей
 bot.hears('🚗 Список автомобилей', (ctx) => {
   ctx.reply(getCarsList());
 });
