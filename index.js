@@ -21,7 +21,7 @@ function saveData() {
 function getCarsList() {
   const keys = Object.keys(data);
   if (keys.length === 0) return 'Пока нет добавленных автомобилей.';
-  return keys.map((car, i) =>  `${i + 1}. ${car} `).join('\n');
+  return keys.map((car, i) => ${i + 1}. ${car}).join('\n');
 }
 
 // Начало
@@ -38,7 +38,8 @@ bot.start((ctx) => {
 // Добавление автомобиля
 bot.hears('➕ Добавить автомобиль', (ctx) => {
   ctx.reply('Введи название автомобиля и последние 6 символов VIN, например: Tiguan • 123456');
-  bot.on('text', (ctx2) => {
+
+  const handler = (ctx2) => {
     const carName = ctx2.message.text.trim();
     if (!data[carName]) {
       data[carName] = {
@@ -47,12 +48,14 @@ bot.hears('➕ Добавить автомобиль', (ctx) => {
         salePrice: 0
       };
       saveData();
-      ctx2.reply(`Автомобиль "${carName}" добавлен!`);
+      ctx2.reply(Автомобиль "${carName}" добавлен!);
     } else {
       ctx2.reply('Такой автомобиль уже есть.');
     }
-    bot.removeListener('text');
-  });
+    bot.off('text', handler); // убираем обработчик, чтобы не дублировался
+  };
+
+  bot.on('text', handler);
 });
 
 // Добавление расхода
@@ -62,46 +65,55 @@ bot.hears('💰 Добавить расход', (ctx) => {
     return;
   }
 
-  ctx.reply('Выбери автомобиль:', Markup.keyboard([...Object.keys(data), ['⬅️ Назад']]).resize());
+  ctx.reply('Выбери автомобиль:', Markup.keyboard([...Object.keys(data), '⬅️ Назад']).resize());
 
-  bot.on('text', (ctx2) => {
+  const carHandler = (ctx2) => {
     const car = ctx2.message.text.trim();
     if (!data[car]) return;
 
-    ctx2.reply(
-      'Кто вносит расход?',
-      Markup.keyboard([['Максим'], ['Андрей'], ['⬅️ Отмена']]).resize()
-    );
+    ctx2.reply('Кто вносит расход?', Markup.keyboard([['Максим'], ['Андрей'], ['⬅️ Отмена']]).resize());
 
-    bot.on('text', (ctx3) => {
+    const personHandler = (ctx3) => {
       const person = ctx3.message.text.trim();
-      if (person === 'Максим' || person === 'Андрей') {
-        ctx3.reply('Введи название статьи расхода (например: ремонт, мойка и т.д.)');
+      if (person !== 'Максим' && person !== 'Андрей') return;
 
-        bot.on('text', (ctx4) => {
-          const expenseName = ctx4.message.text.trim();
-          ctx4.reply(Теперь введи сумму для "${expenseName}");
+      ctx3.reply('Введи название статьи расхода (например: ремонт, мойка и т.д.)');
 
-          bot.on('text', (ctx5) => {
-            const cost = parseFloat(ctx5.message.text);
-            if (isNaN(cost)) {
-              ctx5.reply('Нужно ввести число!');
-              return;
-            }
+      const expenseNameHandler = (ctx4) => {
+        const expenseName = ctx4.message.text.trim();
+        ctx4.reply(Теперь введи сумму для "${expenseName}");
 
-            data[car].expenses.push({
-              person,
-              expenseName,
-              cost
-            });
-            saveData();
-            ctx5.reply(Расход "${expenseName}" на сумму ${cost}₽ добавлен от ${person}.);
-            bot.removeListener('text');
+        const costHandler = (ctx5) => {
+          const cost = parseFloat(ctx5.message.text);
+          if (isNaN(cost)) {
+            ctx5.reply('Нужно ввести число!');
+            return;
+          }
+
+          data[car].expenses.push({
+            person,
+            expenseName,
+            cost
           });
-        });
-      }
-    });
-  });
+          saveData();
+          ctx5.reply(Расход "${expenseName}" на сумму ${cost}₽ добавлен от ${person}.);
+
+          bot.off('text', costHandler);
+        };
+
+        bot.on('text', costHandler);
+        bot.off('text', expenseNameHandler);
+      };
+
+      bot.on('text', expenseNameHandler);
+      bot.off('text', personHandler);
+    };
+
+    bot.on('text', personHandler);
+    bot.off('text', carHandler);
+  };
+
+  bot.on('text', carHandler);
 });
 
 // Отчёт
@@ -113,8 +125,12 @@ bot.hears('📄 Отчёт', (ctx) => {
 
   let text = '';
   for (const [car, info] of Object.entries(data)) {
-    const totalByMax = info.expenses.filter(e => e.person === 'Максим').reduce((sum, e) => sum + e.cost, 0);
-    const totalByAnd = info.expenses.filter(e => e.person === 'Андрей').reduce((sum, e) => sum + e.cost, 0);
+    const totalByMax = info.expenses
+      .filter(e => e.person === 'Максим')
+      .reduce((sum, e) => sum + e.cost, 0);
+    const totalByAnd = info.expenses
+      .filter(e => e.person === 'Андрей')
+      .reduce((sum, e) => sum + e.cost, 0);
     const total = totalByMax + totalByAnd;
 
     text += 🚗 ${car}\n;
