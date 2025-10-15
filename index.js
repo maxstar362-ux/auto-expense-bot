@@ -21,7 +21,7 @@ function saveData() {
 function getCarsList() {
   const keys = Object.keys(data);
   if (keys.length === 0) return 'Пока нет добавленных автомобилей.';
-  return keys.map((car, i) => ${i + 1}. ${car}).join('\n');
+  return keys.map((car, i) =>  `${i + 1}. ${car} `).join('\n');
 }
 
 // Начало
