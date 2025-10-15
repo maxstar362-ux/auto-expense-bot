@@ -47,7 +47,7 @@ bot.hears('➕ Добавить автомобиль', (ctx) => {
         salePrice: 0
       };
       saveData();
-      ctx2.reply(Автомобиль "${carName}" добавлен!);
+      ctx2.reply(`Автомобиль "${carName}" добавлен!`);
     } else {
       ctx2.reply('Такой автомобиль уже есть.');
     }
