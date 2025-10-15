@@ -2,7 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 
 const bot = new Telegraf('8495287734:AAH8ZCbjy_XaoLHS0gsasSDHomiNOdGr_0c');
-const DATA_FILE = 'data.json';
+const DATA_FILE = '/tmp/data.json'; // используем /tmp для записи на Render
 
 // Загружаем данные
 let data = {};
@@ -181,5 +181,7 @@ bot.hears('🚗 Список автомобилей', (ctx) => {
   ctx.reply(getCarsList());
 });
 
-bot.launch();
-console.log('Бот запущен...');
+// Запуск бота через long polling (для Background Worker на Render)
+bot.launch().then(() => {
+  console.log('Бот запущен через long polling (Render Worker)');
+});
